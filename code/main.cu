@@ -1,7 +1,10 @@
 #define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+
 #include <iostream>
 #include <cstddef>
 #include "stb_image.h"
+#include "stb_image_write.h"
 #include <cuda_runtime.h>
 #define REQUESTED_CHANNELS 3 // To force RGB output always
 
@@ -35,6 +38,30 @@ unsigned char* read_image(const char* filename, int& width, int& height, int& fi
     return data;
 }
 
+unsigned char* convertToGreyScale(unsigned char* h_image, int width, int height) {
+    size_t bytes = static_cast<size_t>(width) * height * sizeof(unsigned char);
+    unsigned char* h_grey_image = new unsigned char[bytes];
+
+    for (int i = 0; i < width * height; ++i) {
+        int r = h_image[i * REQUESTED_CHANNELS + 0];
+        int g = h_image[i * REQUESTED_CHANNELS + 1];
+        int b = h_image[i * REQUESTED_CHANNELS + 2];
+
+        // Convert to grayscale using luminosity method
+        h_grey_image[i] = static_cast<unsigned char>(0.21f * r + 0.72f * g + 0.07f * b);
+    }
+
+    return h_grey_image;
+}
+
+void save_image(const char* filename, unsigned char* h_image, int width, int height) {
+    if (!stbi_write_jpg(filename, width, height, 1, h_image, 100)) {
+        cerr << "Failed to save image: " << filename << endl;
+    } else {
+        cout << "Image saved successfully: " << filename << endl;
+    }
+}
+
 int main() {
     const char* filename = "./images/image.jpg";
 
@@ -44,6 +71,10 @@ int main() {
     if (h_image == nullptr) {
         return EXIT_FAILURE;
     }
+
+    // CPU-side grayscale conversion
+    unsigned char* h_grey_image = convertToGreyScale(h_image, width, height);
+    save_image("./images/grey_image_cpu.jpg", h_grey_image, width, height);
 
     // Use REQUESTED_CHANNELS, not file_channels — that's the buffer's real layout.
     size_t bytes = static_cast<size_t>(width) * height * REQUESTED_CHANNELS * sizeof(unsigned char);
