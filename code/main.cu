@@ -62,6 +62,22 @@ void save_image(const char* filename, unsigned char* h_image, int width, int hei
     }
 }
 
+__global__ void convertToGreyScaleKernel(unsigned char* d_image, unsigned char* d_grey_image, int width, int height) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x < width && y < height) {
+        int idx = y * width + x;
+        int r = d_image[idx * REQUESTED_CHANNELS + 0];
+        int g = d_image[idx * REQUESTED_CHANNELS + 1];
+        int b = d_image[idx * REQUESTED_CHANNELS + 2];
+
+        // Convert to grayscale using luminosity method
+        d_grey_image[idx] = static_cast<unsigned char>(0.21f * r + 0.72f * g + 0.07f * b);
+    }
+}
+
+
 int main() {
     const char* filename = "./images/image.jpg";
 
@@ -83,7 +99,27 @@ int main() {
     CUDA_CHECK(cudaMalloc((void**)&d_image, bytes));
     CUDA_CHECK(cudaMemcpy(d_image, h_image, bytes, cudaMemcpyHostToDevice));
     cout<<"Image data copied to device memory successfully!" << endl;
+
     // ... kernel launch goes here ...
+    unsigned char* d_grey_image = nullptr;
+    CUDA_CHECK(cudaMalloc((void**)&d_grey_image, bytes/REQUESTED_CHANNELS)); // Allocate memory for grayscale image
+    
+    dim3 blockDim(16, 16);
+    dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y);
+
+    convertToGreyScaleKernel<<<gridDim, blockDim>>>(d_image, d_grey_image, width, height);
+    cout<<"Kernel launched successfully!" << endl;
+    CUDA_CHECK(cudaDeviceSynchronize());
+    cout<<"Kernel execution completed successfully!" << endl;
+    cout<<"Copying grayscale image data back to host memory..." << endl;
+
+    unsigned char* h_grey_image_gpu = new unsigned char[bytes/REQUESTED_CHANNELS]; // Allocate host memory for grayscale image
+    CUDA_CHECK(cudaMemcpy(h_grey_image_gpu, d_grey_image, static_cast<size_t>(width) * height * sizeof(unsigned char), cudaMemcpyDeviceToHost));
+    cout<<"Grayscale image data copied back to host memory successfully!" << endl;
+
+    save_image("./images/grey_image_gpu.jpg", h_grey_image_gpu, width, height);
+    cout<<"Grayscale image saved successfully!" << endl;
+
 
     stbi_image_free(h_image);
     CUDA_CHECK(cudaFree(d_image));
