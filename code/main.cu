@@ -3,6 +3,8 @@
 
 #include <iostream>
 #include <cstddef>
+#include <chrono>
+#include <iomanip>
 #include "stb_image.h"
 #include "stb_image_write.h"
 #include <cuda_runtime.h>
@@ -89,7 +91,12 @@ int main() {
     }
 
     // CPU-side grayscale conversion
+    auto cpu_start = std::chrono::high_resolution_clock::now();
     unsigned char* h_grey_image = convertToGreyScale(h_image, width, height);
+    auto cpu_end = std::chrono::high_resolution_clock::now();
+    auto cpu_duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(cpu_end - cpu_start).count();
+    std::cout << std::fixed << std::setprecision(6);
+    std::cout << "CPU grayscale conversion time: " << static_cast<double>(cpu_duration_ns) / 1'000'000.0 << " ms" << std::endl;
     save_image("./images/grey_image_cpu.jpg", h_grey_image, width, height);
 
     // Use REQUESTED_CHANNELS, not file_channels — that's the buffer's real layout.
@@ -107,11 +114,23 @@ int main() {
     dim3 blockDim(16, 16);
     dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y);
 
+    cudaEvent_t start, stop;
+    CUDA_CHECK(cudaEventCreate(&start));
+    CUDA_CHECK(cudaEventCreate(&stop));
+
+    CUDA_CHECK(cudaEventRecord(start));
     convertToGreyScaleKernel<<<gridDim, blockDim>>>(d_image, d_grey_image, width, height);
-    cout<<"Kernel launched successfully!" << endl;
-    CUDA_CHECK(cudaDeviceSynchronize());
-    cout<<"Kernel execution completed successfully!" << endl;
-    cout<<"Copying grayscale image data back to host memory..." << endl;
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaEventRecord(stop));
+    CUDA_CHECK(cudaEventSynchronize(stop));
+
+    float gpu_ms = 0.0f;
+    CUDA_CHECK(cudaEventElapsedTime(&gpu_ms, start, stop));
+
+    cout << "Kernel launched successfully!" << endl;
+    cout << "GPU kernel execution time: " << gpu_ms << " ms" << endl;
+    cout << "Kernel execution completed successfully!" << endl;
+    cout << "Copying grayscale image data back to host memory..." << endl;
 
     unsigned char* h_grey_image_gpu = new unsigned char[bytes/REQUESTED_CHANNELS]; // Allocate host memory for grayscale image
     CUDA_CHECK(cudaMemcpy(h_grey_image_gpu, d_grey_image, static_cast<size_t>(width) * height * sizeof(unsigned char), cudaMemcpyDeviceToHost));
