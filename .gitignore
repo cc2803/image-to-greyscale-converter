@@ -1,2 +1,21 @@
-# Images used for tests
-/images
+# Build artifacts
+*.exe
+*.obj
+*.o
+*.out
+*.dll
+*.so
+*.dylib
+
+# CUDA build outputs
+*.cu.cpp
+*.ptx
+*.cubin
+
+# IDE/editor files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
