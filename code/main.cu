@@ -12,6 +12,10 @@
 
 using namespace std;
 
+constexpr float R_WEIGHT = 0.21f;
+constexpr float G_WEIGHT = 0.72f;
+constexpr float B_WEIGHT = 0.07f;
+
 // Simple error-checking macro — wrap every CUDA call in this.
 inline void cudaCheck(cudaError_t err, const char* file, int line) {
     if (err != cudaSuccess) {
@@ -50,7 +54,7 @@ unsigned char* convertToGreyScale(unsigned char* h_image, int width, int height)
         int b = h_image[i * REQUESTED_CHANNELS + 2];
 
         // Convert to grayscale using luminosity method
-        h_grey_image[i] = static_cast<unsigned char>(0.21f * r + 0.72f * g + 0.07f * b);
+        h_grey_image[i] = static_cast<unsigned char>(R_WEIGHT * r + G_WEIGHT * g + B_WEIGHT * b);
     }
 
     return h_grey_image;
@@ -108,8 +112,9 @@ int main() {
     cout<<"Image data copied to device memory successfully!" << endl;
 
     // ... kernel launch goes here ...
+    size_t greyBytes = static_cast<size_t>(width) * height * sizeof(unsigned char);
     unsigned char* d_grey_image = nullptr;
-    CUDA_CHECK(cudaMalloc((void**)&d_grey_image, bytes/REQUESTED_CHANNELS)); // Allocate memory for grayscale image
+    CUDA_CHECK(cudaMalloc((void**)&d_grey_image, greyBytes)); // Allocate memory for grayscale image
     
     dim3 blockDim(16, 16);
     dim3 gridDim((width + blockDim.x - 1) / blockDim.x, (height + blockDim.y - 1) / blockDim.y);
@@ -132,8 +137,8 @@ int main() {
     cout << "Kernel execution completed successfully!" << endl;
     cout << "Copying grayscale image data back to host memory..." << endl;
 
-    unsigned char* h_grey_image_gpu = new unsigned char[bytes/REQUESTED_CHANNELS]; // Allocate host memory for grayscale image
-    CUDA_CHECK(cudaMemcpy(h_grey_image_gpu, d_grey_image, static_cast<size_t>(width) * height * sizeof(unsigned char), cudaMemcpyDeviceToHost));
+    unsigned char* h_grey_image_gpu = new unsigned char[greyBytes]; // Allocate host memory for grayscale image
+    CUDA_CHECK(cudaMemcpy(h_grey_image_gpu, d_grey_image, greyBytes, cudaMemcpyDeviceToHost));
     cout<<"Grayscale image data copied back to host memory successfully!" << endl;
 
     save_image("./images/grey_image_gpu.jpg", h_grey_image_gpu, width, height);
@@ -143,5 +148,12 @@ int main() {
     stbi_image_free(h_image);
     CUDA_CHECK(cudaFree(d_image));
 
+    delete[] h_grey_image;
+    delete[] h_grey_image_gpu;
+
+    CUDA_CHECK(cudaFree(d_grey_image));
+
+    CUDA_CHECK(cudaEventDestroy(start));
+    CUDA_CHECK(cudaEventDestroy(stop));
     return 0;
 }
